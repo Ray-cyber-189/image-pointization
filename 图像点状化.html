@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>图像点状化工具（对齐+按钮文案）</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body{
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+      margin:0;padding:20px;background:#f0f2f5;color:#333;
+      display:flex;flex-direction:column;align-items:center
+    }
+    h1{margin-top:0;font-size:24px}
+    .container{
+      width:100%;max-width:600px;border:2px dashed #ccc;padding:20px;
+      background:#fff;border-radius:8px;box-sizing:border-box;text-align:left
+    }
+    .container label{font-weight:700}
+    .controls-container{display:flex;flex-direction:column;gap:15px;margin-top:15px}
+    .control{display:flex;align-items:center;gap:10px}
+    .control label{white-space:nowrap;font-size:14px}
+    .control input[type=range]{flex:1}
+    .control input[type=number]{width:55px;text-align:center;font-weight:700;border:1px solid #ccc;border-radius:4px}
+    .button-group{margin-top:15px;display:flex;gap:10px}
+    .button-group button{
+      padding:10px 15px;border:none;color:#fff;border-radius:5px;
+      cursor:pointer;font-size:14px;transition:.3s;white-space:nowrap
+    }
+    #applyButton{background:#007bff}
+    #applyButton:hover:not(:disabled){background:#0056b3}
+    #generateSaveBtn{background:#28a745}
+    #generateSaveBtn:hover:not(:disabled){background:#218838}
+    .button-group button:disabled{background:#ccc;cursor:not-allowed}
+    #outputCanvas{max-width:100%;border:1px solid #ddd;background:#eee;margin-top:15px;display:block}
+    #saveImage{max-width:100%;border:1px solid #ddd;margin-top:15px;display:none}
+  </style>
+</head>
+<body>
+  <h1>图像点状化工具</h1>
+
+  <div class="container">
+    <label>1. 请选择一张图片：</label>
+    <input type="file" id="imageInput" accept="image/*" style="margin-top:4px" />
+
+    <div class="controls-container">
+      <label>2. 调整参数：</label>
+      <div class="control">
+        <label for="dotSizeSlider">颗粒大小:</label>
+        <input type="range" id="dotSizeSlider" min="0.1" max="10" step="0.1" value="2" />
+        <input type="number" id="dotSizeInput" min="0.1" max="10" step="0.1" value="2" />
+      </div>
+      <div class="control">
+        <label for="densitySlider">颗粒间距 (越小越密):</label>
+        <input type="range" id="densitySlider" min="0.5" max="20" step="0.1" value="4" />
+        <input type="number" id="densityInput" min="0.5" max="20" step="0.1" value="4" />
+      </div>
+    </div>
+
+    <div class="button-group">
+      <button id="applyButton" disabled>应用新设置</button>
+      <button id="generateSaveBtn" disabled style="white-space:pre-line">
+  点击生成第二张图片后
+  <br>长按图片→右键保存到手机
+</button>
+    </div>
+
+    <canvas id="outputCanvas"></canvas>
+    <img id="saveImage" alt="长按保存图片" />
+  </div>
+
+  <script>
+    function createPointillismEffect(image, canvas, options = {}) {
+      const { step = 4, dotRadius = 2 } = options;
+      const width = image.width;
+      const height = image.height;
+      canvas.width = width;
+      canvas.height = height;
+      const targetCtx = canvas.getContext('2d');
+
+      const sourceCanvas = document.createElement('canvas');
+      sourceCanvas.width = width;
+      sourceCanvas.height = height;
+      const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+      sourceCtx.drawImage(image, 0, 0, width, height);
+      const imageData = sourceCtx.getImageData(0, 0, width, height).data;
+
+      targetCtx.clearRect(0, 0, width, height);
+      targetCtx.fillStyle = '#FFFFFF';
+      targetCtx.fillRect(0, 0, width, height);
+
+      for (let iy = 0; iy < Math.ceil(height / step); iy++) {
+        const y = iy * step;
+        for (let ix = 0; ix < Math.ceil(width / step); ix++) {
+          const x = ix * step;
+          const index = (Math.floor(y) * width + Math.floor(x)) * 4;
+          const [r, g, b, a] = [imageData[index], imageData[index + 1], imageData[index + 2], imageData[index + 3]];
+          targetCtx.fillStyle = `rgba(${r},${g},${b},${a / 255})`;
+          const jitterX = x + (Math.random() - 0.5) * step;
+          const jitterY = y + (Math.random() - 0.5) * step;
+          targetCtx.beginPath();
+          targetCtx.arc(jitterX, jitterY, dotRadius, 0, Math.PI * 2);
+          targetCtx.fill();
+        }
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const imageInput = document.getElementById('imageInput');
+      const canvas     = document.getElementById('outputCanvas');
+      const applyBtn   = document.getElementById('applyButton');
+      const genBtn     = document.getElementById('generateSaveBtn');
+      const saveImg    = document.getElementById('saveImage');
+
+      const dotSizeSlider = document.getElementById('dotSizeSlider');
+      const dotSizeInput  = document.getElementById('dotSizeInput');
+      const densitySlider = document.getElementById('densitySlider');
+      const densityInput  = document.getElementById('densityInput');
+
+      let currentImage = null;
+
+      function sync(slider, input) {
+        input.value = slider.value;
+      }
+      function reverse(input, slider) {
+        const v = parseFloat(input.value);
+        if (!isNaN(v)) slider.value = v;
+      }
+
+      function render() {
+        if (!currentImage) return;
+        createPointillismEffect(currentImage, canvas, {
+          dotRadius: parseFloat(dotSizeSlider.value),
+          step: parseFloat(densitySlider.value)
+        });
+        applyBtn.disabled = false;
+        genBtn.disabled   = false;
+      }
+
+      dotSizeSlider.addEventListener('input', () => sync(dotSizeSlider, dotSizeInput));
+      dotSizeInput.addEventListener('input',  () => reverse(dotSizeInput, dotSizeSlider));
+      densitySlider.addEventListener('input', () => sync(densitySlider, densityInput));
+      densityInput.addEventListener('input',  () => reverse(densityInput, densitySlider));
+
+      imageInput.addEventListener('change', e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+          const img = new Image();
+          img.onload = () => {
+            currentImage = img;
+            render();
+          };
+          img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+
+      applyBtn.addEventListener('click', render);
+
+      genBtn.addEventListener('click', () => {
+        if (!currentImage) return;
+        const dataURL = canvas.toDataURL('image/png');
+        saveImg.src = dataURL;
+        saveImg.style.display = 'block';
+        saveImg.scrollIntoView({ behavior: 'smooth' });
+      });
+    });
+  </script>
+</body>
+</html>
